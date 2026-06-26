@@ -3,211 +3,109 @@ from dotenv import load_dotenv
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
 
-import asyncio
-import random
-from aiogram import Bot, Dispatcher, F
-from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+import requests
+from bs4 import BeautifulSoup
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-bot = Bot(TOKEN)
-dp = Dispatcher()
+# Хранилище игроков (ник -> платформа)
+players = {}  # пример: {"JIeHuBblu_KoT": "PC"}
 
-# -------------------------
-# Карты
-# -------------------------
+# Получение RP
+def get_rp(nickname, platform="PC"):
+    try:
+        url = f"https://apexlegendsstatus.com/profile/{platform}/{nickname}"
+        headers = {"User-Agent": "Mozilla/5.0"}
 
-suits = ["♠", "♥", "♦", "♣"]
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
 
-cards = [
-    ("A", 11),
-    ("2", 2),
-    ("3", 3),
-    ("4", 4),
-    ("5", 5),
-    ("6", 6),
-    ("7", 7),
-    ("8", 8),
-    ("9", 9),
-    ("10", 10),
-    ("J", 10),
-    ("Q", 10),
-    ("K", 10)
-]
+        soup = BeautifulSoup(response.text, "html.parser")
 
-# Игры пользователей
-games = {}
-
-
-def draw_card():
-    rank, value = random.choice(cards)
-    suit = random.choice(suits)
-    return {
-        "name": f"{rank}{suit}",
-        "rank": rank,
-        "value": value
-    }
-
-
-def hand_value(hand):
-    total = sum(card["value"] for card in hand)
-
-    aces = sum(1 for c in hand if c["rank"] == "A")
-
-    while total > 21 and aces:
-        total -= 10
-        aces -= 1
-
-    return total
-
-
-def cards_text(hand):
-    return " ".join(card["name"] for card in hand)
-
-
-def keyboard():
-    kb = InlineKeyboardBuilder()
-    kb.button(text="🎴 Взять карту", callback_data="hit")
-    kb.button(text="✋ Хватит", callback_data="stand")
-    return kb.as_markup()
-
-
-# -------------------------
-# Старт игры
-# -------------------------
-
-@dp.message(Command("blackjack"))
-async def blackjack(message: Message):
-
-    player = [draw_card(), draw_card()]
-    dealer = [draw_card(), draw_card()]
-
-    games[message.from_user.id] = {
-        "player": player,
-        "dealer": dealer
-    }
-
-    text = (
-        f"🃏 Black Jack\n\n"
-
-        f"Ваши карты:\n"
-        f"{cards_text(player)}\n"
-        f"Очки: {hand_value(player)}\n\n"
-
-        f"Карта дилера:\n"
-        f"{dealer[0]['name']} ❓"
-    )
-
-    await message.answer(text, reply_markup=keyboard())
-
-
-# -------------------------
-# Взять карту
-# -------------------------
-
-@dp.callback_query(F.data == "hit")
-async def hit(callback: CallbackQuery):
-
-    game = games.get(callback.from_user.id)
-
-    if not game:
-        await callback.answer("Игра не найдена")
-        return
-
-    game["player"].append(draw_card())
-
-    score = hand_value(game["player"])
-
-    if score > 21:
-
-        text = (
-            f"💥 Перебор!\n\n"
-
-            f"Ваши карты:\n"
-            f"{cards_text(game['player'])}\n"
-            f"Очки: {score}\n\n"
-
-            f"Вы проиграли."
+        rp_tag = soup.find(
+            "p",
+            class_="center-element general-stats general-stats-rank"
         )
 
-        del games[callback.from_user.id]
+        if rp_tag:
+            return rp_tag.text.strip()
+        else:
+            return "RP не найден 😢"
 
-        await callback.message.edit_text(text)
+    except Exception as e:
+        return f"Ошибка: {e}"
 
+# /add
+async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Используй: /add <ник>")
         return
 
-    text = (
-        f"Ваши карты:\n"
-        f"{cards_text(game['player'])}\n"
-        f"Очки: {score}\n\n"
+    nickname = context.args[0]
+    players[nickname] = "PC"
 
-        f"Дилер:\n"
-        f"{game['dealer'][0]['name']} ❓"
-    )
+    await update.message.reply_text(f"✅ Добавлен: {nickname}")
 
-    await callback.message.edit_text(text, reply_markup=keyboard())
-
-    await callback.answer()
-
-
-# -------------------------
-# Хватит
-# -------------------------
-
-@dp.callback_query(F.data == "stand")
-async def stand(callback: CallbackQuery):
-
-    game = games.get(callback.from_user.id)
-
-    if not game:
-        await callback.answer("Игра не найдена")
+# /remove
+async def remove_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Используй: /remove <ник>")
         return
 
-    player_score = hand_value(game["player"])
+    nickname = context.args[0]
 
-    while hand_value(game["dealer"]) < 17:
-        game["dealer"].append(draw_card())
-
-    dealer_score = hand_value(game["dealer"])
-
-    if dealer_score > 21:
-        result = "🎉 Дилер перебрал! Вы победили!"
-
-    elif dealer_score > player_score:
-        result = "😢 Победа дилера."
-
-    elif dealer_score < player_score:
-        result = "🏆 Вы победили!"
-
+    if nickname in players:
+        del players[nickname]
+        await update.message.reply_text(f"❌ Удалён: {nickname}")
     else:
-        result = "🤝 Ничья."
+        await update.message.reply_text("Игрок не найден")
 
-    text = (
-        f"🃏 Игра окончена\n\n"
+# /list
+async def list_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not players:
+        await update.message.reply_text("Список пуст 😢")
+        return
 
-        f"Ваши карты:\n"
-        f"{cards_text(game['player'])}\n"
-        f"Очки: {player_score}\n\n"
+    text = "📋 Игроки:\n"
+    for p in players:
+        text += f"- {p}\n"
 
-        f"Карты дилера:\n"
-        f"{cards_text(game['dealer'])}\n"
-        f"Очки: {dealer_score}\n\n"
+    await update.message.reply_text(text)
 
-        f"{result}"
-    )
+# /rp (все или один)
+async def rp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.args:
+        nickname = context.args[0]
 
-    del games[callback.from_user.id]
+        if nickname not in players:
+            await update.message.reply_text("Игрок не добавлен")
+            return
 
-    await callback.message.edit_text(text)
+        rp = get_rp(nickname)
+        await update.message.reply_text(f"{nickname}: {rp}")
+    else:
+        if not players:
+            await update.message.reply_text("Нет игроков 😢")
+            return
 
-    await callback.answer()
+        text = "🏆 RP игроков:\n"
+        for nickname in players:
+            rp = get_rp(nickname)
+            text += f"{nickname}: {rp}\n"
 
+        await update.message.reply_text(text)
 
-# -------------------------
+# Запуск
+def main():
+    app = ApplicationBuilder().token(TOKEN).build()
 
-async def main():
-    await dp.start_polling(bot)
+    app.add_handler(CommandHandler("add", add_player))
+    app.add_handler(CommandHandler("remove", remove_player))
+    app.add_handler(CommandHandler("list", list_players))
+    app.add_handler(CommandHandler("rp", rp_command))
 
+    print("Бот запущен...")
+    app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
