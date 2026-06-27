@@ -116,6 +116,48 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await msg.edit_text(f"⚠️ Ошибка обработки данных: {e}")
 
+async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    url = "https://api.mozambiquehe.re/bridge"
+
+    params = {
+        "auth": API_KEY,
+        "player": "JIeHuBblu_KoT",
+        "platform": "PC"
+    }
+
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/122.0 Safari/537.36"
+        ),
+        "Referer": "https://apexlegendsstatus.com/",
+        "Origin": "https://apexlegendsstatus.com"
+    }
+
+    try:
+        msg = await update.message.reply_text("🔎 TEST запрос выполняется...")
+
+        r = requests.get(url, params=params, headers=headers, timeout=15)
+
+        result_text = (
+            f"📡 STATUS: {r.status_code}\n\n"
+            f"📄 RAW RESPONSE:\n{r.text[:1500]}"
+        )
+
+        # пробуем распарсить JSON
+        try:
+            json_data = r.json()
+            result_text += f"\n\n✅ JSON PARSED SUCCESSFULLY:\n{json_data}"
+        except Exception:
+            result_text += "\n\n❌ JSON PARSE FAILED"
+
+        await msg.edit_text(result_text)
+
+    except Exception as e:
+        await update.message.reply_text(f"💥 REQUEST ERROR: {e}")
 
 # ----------------------------
 # запуск бота
@@ -124,6 +166,7 @@ def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("rank", rank))
+    app.add_handler(CommandHandler("test", test))
 
     print("Bot started...")
     app.run_polling()
