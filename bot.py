@@ -15,6 +15,8 @@ logging.basicConfig(level=logging.INFO)
 # ----------------------------
 # API запрос
 # ----------------------------
+session = requests.Session()
+
 def get_stats(player: str, platform: str):
     url = "https://api.mozambiquehe.re/bridge"
 
@@ -25,33 +27,30 @@ def get_stats(player: str, platform: str):
     }
 
     headers = {
-        "Accept": "application/json",
+        "Accept": "application/json, text/plain, */*",
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/122.0 Safari/537.36"
+            "Chrome/122.0.0.0 Safari/537.36"
         ),
-        "Referer": "https://apexlegendsstatus.com/"
+        "Referer": "https://apexlegendsstatus.com/",
+        "Origin": "https://apexlegendsstatus.com",
+        "Connection": "keep-alive"
     }
 
     try:
-        r = requests.get(url, params=params, headers=headers, timeout=15)
+        r = session.get(url, params=params, headers=headers, timeout=15)
 
         logging.info(f"[{platform}] status: {r.status_code}")
 
-        # если API блокнул
         if r.status_code != 200:
-            logging.warning(f"[{platform}] response: {r.text[:150]}")
+            logging.warning(f"[{platform}] body: {r.text[:200]}")
             return None
 
-        try:
-            return r.json()
-        except Exception:
-            logging.error(f"[{platform}] JSON parse error")
-            return None
+        return r.json()
 
     except Exception as e:
-        logging.error(f"[{platform}] request error: {e}")
+        logging.error(f"[{platform}] error: {e}")
         return None
 
 
