@@ -6,7 +6,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 TOKEN = os.getenv("TOKEN")
-API_KEY = os.getenv("d9357a603b3025c9f4bdab0e35a3ee6a")
+API_KEY = os.getenv("API_KEY")
 
 logging.basicConfig(level=logging.INFO)
 
