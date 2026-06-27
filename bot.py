@@ -1,18 +1,18 @@
 import os
-TOKEN = os.getenv("TOKEN")
 import logging
 import requests
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-#apexlegendsapi
+
+TOKEN = os.getenv("TOKEN")
 API_KEY = "d9357a603b3025c9f4bdab0e35a3ee6a"
 
 logging.basicConfig(level=logging.INFO)
 
 
 # ----------------------------
-# Запрос к Apex API
+# Запрос к API
 # ----------------------------
 def get_stats(player: str, platform: str):
     url = "https://api.mozambiquehe.re/bridge"
@@ -23,22 +23,43 @@ def get_stats(player: str, platform: str):
         "platform": platform
     }
 
-    try:
-        r = requests.get(url, params=params, timeout=15)
-        data = r.json()
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0"
+    }
 
-        # API может вернуть Error
-        if isinstance(data, dict) and data.get("Error"):
+    try:
+        r = requests.get(url, params=params, headers=headers, timeout=15)
+
+        # 🔥 ЛОГИ ДЛЯ ОТЛАДКИ
+        logging.info(f"[{platform}] status: {r.status_code}")
+        logging.info(f"[{platform}] text: {r.text[:200]}")
+
+        # если не 200 — сразу мимо
+        if r.status_code != 200:
             return None
+
+        # безопасный JSON
+        try:
+            data = r.json()
+        except Exception:
+            logging.error(f"[{platform}] JSON decode failed")
+            return None
+
+        # API ошибка
+        if isinstance(data, dict):
+            if data.get("Error") or data.get("error"):
+                return None
 
         return data
 
-    except Exception:
+    except Exception as e:
+        logging.error(f"[{platform}] request failed: {e}")
         return None
 
 
 # ----------------------------
-# Автоопределение платформы
+# Авто-платформа
 # ----------------------------
 def get_stats_auto(player: str):
     platforms = ["PC", "PS4", "X1"]
@@ -46,14 +67,14 @@ def get_stats_auto(player: str):
     for platform in platforms:
         data = get_stats(player, platform)
 
-        if data:
+        if data and isinstance(data, dict):
             return data, platform
 
     return None, None
 
 
 # ----------------------------
-# /rank команда
+# /rank
 # ----------------------------
 async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -68,7 +89,7 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data, platform = get_stats_auto(player)
 
     if not data:
-        await msg.edit_text("❌ Игрок не найден ни на одной платформе.")
+        await msg.edit_text("❌ Игрок не найден или API не отвечает.")
         return
 
     try:
@@ -96,11 +117,10 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ----------------------------
-# запуск бота
+# запуск
 # ----------------------------
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
-
     app.add_handler(CommandHandler("rank", rank))
 
     print("Bot started...")
