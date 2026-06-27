@@ -14,6 +14,11 @@ logging.basicConfig(level=logging.INFO)
 # ----------------------------
 # API запрос
 # ----------------------------
+def detect_input_type(player: str):
+    if player.isdigit() and len(player) == 17:
+        return "steamid"
+    return "nickname"
+
 session = requests.Session()
 
 def get_stats(player: str, platform: str):
@@ -57,15 +62,17 @@ def get_stats(player: str, platform: str):
 # авто-платформа
 # ----------------------------
 def get_stats_auto(player: str):
+    input_type = detect_input_type(player)
+
     platforms = ["PC", "PS4", "X1"]
 
     for platform in platforms:
         data = get_stats(player, platform)
 
-        if isinstance(data, dict) and data.get("global"):
-            return data, platform
+        if data and isinstance(data, dict) and data.get("global"):
+            return data, platform, input_type
 
-    return None, None
+    return None, None, input_type
 
 
 # ----------------------------
@@ -74,17 +81,17 @@ def get_stats_auto(player: str):
 async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args:
-        await update.message.reply_text("Использование: /rank nickname")
+        await update.message.reply_text("Использование: /rank nickname или SteamID")
         return
 
     player = context.args[0]
 
     msg = await update.message.reply_text("🔎 Ищу игрока...")
 
-    data, platform = get_stats_auto(player)
+    data, platform, input_type = get_stats_auto(player)
 
     if not data:
-        await msg.edit_text("❌ Игрок не найден или API временно недоступен.")
+        await msg.edit_text("❌ Игрок не найден или API не поддерживает этот ID.")
         return
 
     try:
@@ -99,19 +106,17 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         rank_full = f"{rank_name} {rank_div}".strip()
 
-        # realtime статус
-        realtime = data.get("realtime", {})
-        status = realtime.get("currentStateAsText", "Unknown")
-
         await msg.edit_text(
-            f"🎮 Игрок: {player}\n"
+            f"🎮 Игрок: {global_data.get('name', player)}\n"
+            f"🆔 Тип ввода: {input_type}\n"
+            f"🖥 Платформа: {platform}\n\n"
+            f"📊 Уровень: {level}\n"
             f"🏆 Ранг: {rank_full}\n"
-            f"⭐ RP: {rp}\n\n"
-            f"📡 Статус: {status}"
+            f"⭐ RP: {rp}"
         )
 
     except Exception as e:
-        await msg.edit_text(f"⚠️ Ошибка обработки данных: {e}")
+        await msg.edit_text(f"⚠️ Ошибка: {e}")
 
 async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
