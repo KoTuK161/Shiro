@@ -6,8 +6,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 TOKEN = os.getenv("TOKEN")
-
-API_KEY = "d9357a603b3025c9f4bdab0e35a3ee6a"
+API_KEY = os.getenv("d9357a603b3025c9f4bdab0e35a3ee6a")
 
 logging.basicConfig(level=logging.INFO)
 
@@ -106,8 +105,6 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await msg.edit_text(
             f"🎮 Игрок: {player}\n"
-            f"🖥 Платформа: {platform}\n\n"
-            f"📊 Уровень: {level}\n"
             f"🏆 Ранг: {rank_full}\n"
             f"⭐ RP: {rp}\n\n"
             f"📡 Статус: {status}"
