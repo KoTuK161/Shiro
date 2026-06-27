@@ -1,112 +1,55 @@
 import os
 TOKEN = os.getenv("TOKEN")
-
 import logging
-import re
-import json
 import requests
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+#apexlegendsapi
+API_KEY = "d9357a603b3025c9f4bdab0e35a3ee6a"
 
 logging.basicConfig(level=logging.INFO)
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0 Safari/537.36"
-    )
-}
-
 
 # ----------------------------
-# Получение страницы профиля
+# Запрос к Apex API
 # ----------------------------
-def fetch_profile(player: str, platform: str = "PC"):
-    url = f"https://apexlegendsstatus.com/profile/{platform}/{player}"
+def get_stats(player: str, platform: str):
+    url = "https://api.mozambiquehe.re/bridge"
+
+    params = {
+        "auth": API_KEY,
+        "player": player,
+        "platform": platform
+    }
 
     try:
-        r = requests.get(url, headers=HEADERS, timeout=20)
-        if r.status_code != 200:
+        r = requests.get(url, params=params, timeout=15)
+        data = r.json()
+
+        # API может вернуть Error
+        if isinstance(data, dict) and data.get("Error"):
             return None
-        return r.text
-    except:
+
+        return data
+
+    except Exception:
         return None
 
 
 # ----------------------------
-# Парсинг RP и ранга (без bs4)
+# Автоопределение платформы
 # ----------------------------
-def parse_stats(html: str):
-    rp = None
-    rank = None
+def get_stats_auto(player: str):
+    platforms = ["PC", "PS4", "X1"]
 
-    # -------------------------
-    # 1. Пытаемся достать JSON
-    # -------------------------
-    try:
-        # ищем большой JSON в странице
-        start = html.find("__NEXT_DATA__")
-        if start != -1:
-            json_start = html.find("{", start)
-            json_end = html.rfind("}")
-            raw_json = html[json_start:json_end + 1]
+    for platform in platforms:
+        data = get_stats(player, platform)
 
-            data = json.loads(raw_json)
+        if data:
+            return data, platform
 
-            rank_info = (
-                data.get("props", {})
-                    .get("pageProps", {})
-                    .get("data", {})
-                    .get("global", {})
-                    .get("rank", {})
-            )
-
-            if rank_info:
-                name = rank_info.get("rankName")
-                div = rank_info.get("rankDiv")
-                score = rank_info.get("rankScore")
-
-                if name:
-                    rank = f"{name} {div}" if div else name
-
-                if score:
-                    rp = str(score)
-
-                return rp, rank
-
-    except Exception:
-        pass
-
-    # -------------------------
-    # 2. Fallback regex
-    # -------------------------
-    clean_text = re.sub(r"<[^>]+>", " ", html)
-
-    rp_match = re.search(r"([\d,.]+)\s*RP", clean_text)
-    if rp_match:
-        rp = rp_match.group(1)
-
-    ranks = [
-        "Rookie",
-        "Bronze",
-        "Silver",
-        "Gold",
-        "Platinum",
-        "Diamond",
-        "Master",
-        "Apex Predator"
-    ]
-
-    for r in ranks:
-        if r in clean_text:
-            tier = re.search(rf"{r}\s*(IV|III|II|I)?", clean_text)
-            if tier:
-                rank = tier.group(0)
-                break
-
-    return rp, rank
+    return None, None
 
 
 # ----------------------------
@@ -115,42 +58,51 @@ def parse_stats(html: str):
 async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args:
-        await update.message.reply_text(
-            "Использование:\n/rank nickname [platform]\n"
-            "Пример:\n/rank NickName PC"
-        )
+        await update.message.reply_text("Использование: /rank nickname")
         return
 
     player = context.args[0]
-    platform = context.args[1].upper() if len(context.args) > 1 else "PC"
 
     msg = await update.message.reply_text("🔎 Ищу игрока...")
 
-    html = fetch_profile(player, platform)
+    data, platform = get_stats_auto(player)
 
-    if not html:
-        await msg.edit_text("❌ Профиль не найден или недоступен.")
+    if not data:
+        await msg.edit_text("❌ Игрок не найден ни на одной платформе.")
         return
 
-    rp, rank = parse_stats(html)
+    try:
+        global_data = data.get("global", {})
+        rank_data = global_data.get("rank", {})
 
-    rp = rp or "Не найдено"
-    rank = rank or "Не найдено"
+        level = global_data.get("level", "—")
 
-    await msg.edit_text(
-        f"🎮 Игрок: {player}\n"
-        f"🖥 Платформа: {platform}\n\n"
-        f"🏆 Ранг: {rank}\n"
-        f"⭐ RP: {rp}"
-    )
+        rp = rank_data.get("rankScore", "Не найдено")
+        rank_name = rank_data.get("rankName", "Не найдено")
+        rank_div = rank_data.get("rankDiv", "")
+
+        rank_full = f"{rank_name} {rank_div}".strip()
+
+        await msg.edit_text(
+            f"🎮 Игрок: {player}\n"
+            f"🖥 Платформа: {platform} (auto)\n\n"
+            f"📊 Уровень: {level}\n"
+            f"🏆 Ранг: {rank_full}\n"
+            f"⭐ RP: {rp}"
+        )
+
+    except Exception as e:
+        await msg.edit_text(f"⚠️ Ошибка обработки данных: {e}")
 
 
 # ----------------------------
-# запуск
+# запуск бота
 # ----------------------------
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
+
     app.add_handler(CommandHandler("rank", rank))
+
     print("Bot started...")
     app.run_polling()
 
